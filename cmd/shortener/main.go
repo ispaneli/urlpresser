@@ -79,7 +79,9 @@ func redirectingURLHandler(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).SendString("Invalid short URL")
 	}
 
-	return c.Status(http.StatusTemporaryRedirect).Redirect(originalURL)
+	c.Set("Location", originalURL)
+	c.Status(http.StatusTemporaryRedirect)
+	return nil
 }
 
 func main() {
