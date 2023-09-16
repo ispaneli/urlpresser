@@ -72,6 +72,11 @@ func TestShortingURLRoute(t *testing.T) {
 			// If it doesn't exist, add it to the map.
 			originalURLMap[test.body] = shortURL
 		}
+
+		err := resp.Body.Close()
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -118,6 +123,12 @@ func TestRedirectingURLRoute(t *testing.T) {
 		bodyBuffer := new(bytes.Buffer)
 		bodyBuffer.ReadFrom(postResp.Body)
 		shortURL := bodyBuffer.String()
+
+		postError := postResp.Body.Close()
+		if postError != nil {
+			return
+		}
+
 		// Parse the short URL to extract the ID.
 		URLParts := strings.Split(shortURL, "/")
 		idURL := URLParts[len(URLParts)-1]
@@ -131,5 +142,10 @@ func TestRedirectingURLRoute(t *testing.T) {
 		redirectLocation, _ := getResp.Location()
 		// Assert that the redirect location matches the original URL.
 		assert.Equalf(t, test.body, redirectLocation.String(), test.description)
+
+		getError := getResp.Body.Close()
+		if getError != nil {
+			return
+		}
 	}
 }
