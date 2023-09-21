@@ -2,21 +2,25 @@ package main
 
 import (
 	"fmt"
-	"github.com/gofiber/fiber/v2"
+	"github.com/ispaneli/urlpresser/cmd/shortener/config"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
-	"github.com/ispaneli/urlpresser/cmd/shortener/config"
+	"github.com/valyala/fasthttp"
 )
 
-// ShortURLMap stores the mapping of shortened URLs to original URLs.
-var ShortURLMap = make(map[string]string)
+type URLMap struct {
+	// ShortURLMap stores the mapping of shortened URLs to original URLs.
+	ShortURLMap map[string]string
+	// OriginalURLMap stores the mapping of original URLs to shortened URLs.
+	OriginalURLMap map[string]string
 
-// OriginalURLMap stores the mapping of original URLs to shortened URLs.
-var OriginalURLMap = make(map[string]string)
+	sync.Mutex
+}
 
 func generateShortURL() string {
 	/*
@@ -40,20 +44,24 @@ func randomInt(min int, max int) int {
 	return min + rand.Intn(max-min+1)
 }
 
-func shortingURLHandler(c *fiber.Ctx, baseURL string) error {
+func shortingURLHandler(ctx *fasthttp.RequestCtx, baseURL string) {
 	/*
 	   Handler for URL shortening.
 	*/
-	originalURL := strings.TrimSpace(string(c.Body()))
+	originalURL := strings.TrimSpace(string(ctx.PostBody()))
 	if originalURL == "" {
-		return c.Status(http.StatusBadRequest).SendString("Invalid request")
+		ctx.SetStatusCode(http.StatusBadRequest)
+		ctx.SetBodyString("Invalid request")
+		return
 	}
 
 	// Check if the original URL already exists in OriginalURLMap.
 	existShortURL, ok := OriginalURLMap[originalURL]
 	if ok {
 		responseURL := fmt.Sprintf(`%s%s`, baseURL, existShortURL)
-		return c.Status(http.StatusCreated).SendString(responseURL)
+		ctx.SetStatusCode(http.StatusCreated)
+		ctx.SetBodyString(responseURL)
+		return
 	}
 
 	// Generate a unique identifier for the shortened link.
@@ -64,24 +72,26 @@ func shortingURLHandler(c *fiber.Ctx, baseURL string) error {
 			OriginalURLMap[originalURL] = shortURL
 
 			responseURL := fmt.Sprintf(`%s%s`, baseURL, shortURL)
-			return c.Status(http.StatusCreated).SendString(responseURL)
+			ctx.SetStatusCode(http.StatusCreated)
+			ctx.SetBodyString(responseURL)
+			return
 		}
 	}
 }
 
-func redirectingURLHandler(c *fiber.Ctx) error {
+func redirectingURLHandler(ctx *fasthttp.RequestCtx) {
 	/*
 	   Handler for redirecting to the original URL.
 	*/
-	shortURL := c.Params("id")
+	shortURL := ctx.UserValue("id").(string)
 	originalURL, ok := ShortURLMap[shortURL]
 	if !ok {
-		return c.Status(http.StatusBadRequest).SendString("Invalid short URL")
+		ctx.SetStatusCode(http.StatusBadRequest)
+		ctx.SetBodyString("Invalid short URL")
+		return
 	}
 
-	c.Set("Location", originalURL)
-	c.Status(http.StatusTemporaryRedirect)
-	return nil
+	ctx.Redirect(originalURL, http.StatusTemporaryRedirect)
 }
 
 func main() {
@@ -102,14 +112,22 @@ func main() {
 	}
 
 	// Creating and configuring web-application.
-	app := fiber.New()
+	server := &fasthttp.Server{
+		Handler: func(ctx *fasthttp.RequestCtx) {
+			switch string(ctx.Path()) {
+			case "/":
+				if ctx.IsPost() {
+					shortingURLHandler(ctx, baseURL)
+				} else {
+					ctx.SetStatusCode(http.StatusMethodNotAllowed)
+				}
+			default:
+				redirectingURLHandler(ctx)
+			}
+		},
+	}
 
-	app.Post(`/`, func(c *fiber.Ctx) error {
-		return shortingURLHandler(c, baseURL)
-	})
-	app.Get(`/:id`, redirectingURLHandler)
-
-	err := app.Listen(HTTPAddress)
+	err := server.ListenAndServe(HTTPAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
