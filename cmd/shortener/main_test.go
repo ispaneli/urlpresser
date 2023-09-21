@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/ispaneli/urlpresser/internal/handlers"
+	"github.com/ispaneli/urlpresser/internal/storage"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,60 +24,56 @@ func TestShortingURLRoute(t *testing.T) {
 	}{
 		{
 			description:  "Get HTTP status 201",
-			route:        `/`,
+			route:        "/",
 			body:         "https://practicum.yandex.ru/",
 			contentType:  "text/plain",
 			expectedCode: http.StatusCreated,
 		},
 		{
 			description:  "Get HTTP status 400 (body was empty)",
-			route:        `/`,
+			route:        "/",
 			body:         "",
 			contentType:  "text/plain",
 			expectedCode: http.StatusBadRequest,
 		},
 		{
 			description:  "Get HTTP status 201 (existing URL)",
-			route:        `/`,
+			route:        "/",
 			body:         "https://practicum.yandex.ru/",
 			contentType:  "text/plain",
 			expectedCode: http.StatusCreated,
 		},
 	}
 
-	app := fiber.New()
-	app.Post(`/`, func(c *fiber.Ctx) error {
-		return shortingURLHandler(c, "http://localhost:8080/")
-	})
+	e := echo.New()
+	h := handlers.NewHandlers(storage.NewStorage(), "http://localhost:8080/")
+	e.POST("/", h.ShortingURLHandler)
 
 	var originalURLMap = make(map[string]string)
 
 	for _, test := range tests {
 		// Create a POST request with the test data.
-		req := httptest.NewRequest(http.MethodPost, `/`, bytes.NewBufferString(test.body))
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(test.body))
 		req.Header.Set("Content-Type", test.contentType)
-		resp, _ := app.Test(req, 1)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
 
-		// Assert that the response status code matches the expected code.
-		assert.Equalf(t, test.expectedCode, resp.StatusCode, test.description)
+		// Handle the request.
+		if assert.NoError(t, h.ShortingURLHandler(c)) {
+			// Assert that the response status code matches the expected code.
+			assert.Equalf(t, test.expectedCode, rec.Code, test.description)
 
-		// Read the response body to get the short URL.
-		bodyBuffer := new(bytes.Buffer)
-		bodyBuffer.ReadFrom(resp.Body)
-		shortURL := bodyBuffer.String()
+			// Read the response body to get the short URL.
+			shortURL := rec.Body.String()
 
-		// Check if the original URL already exists in the map.
-		if existShortURL, ok := originalURLMap[test.body]; ok {
-			// If it exists, assert that the short URL matches the existing one.
-			assert.Equalf(t, existShortURL, shortURL, test.description)
-		} else {
-			// If it doesn't exist, add it to the map.
-			originalURLMap[test.body] = shortURL
-		}
-
-		err := resp.Body.Close()
-		if err != nil {
-			return
+			// Check if the original URL already exists in the map.
+			if existShortURL, ok := originalURLMap[test.body]; ok {
+				// If it exists, assert that the short URL matches the existing one.
+				assert.Equalf(t, existShortURL, shortURL, test.description)
+			} else {
+				// If it doesn't exist, add it to the map.
+				originalURLMap[test.body] = shortURL
+			}
 		}
 	}
 }
@@ -90,62 +88,51 @@ func TestRedirectingURLRoute(t *testing.T) {
 	}{
 		{
 			description:  "Get HTTP status 200",
-			route:        `/`,
+			route:        "/",
 			body:         "https://practicum.yandex.ru/",
 			contentType:  "text/plain",
 			expectedCode: http.StatusCreated,
 		},
 		{
 			description:  "Get HTTP status 201 (existing URL)",
-			route:        `/`,
+			route:        "/",
 			body:         "https://practicum.yandex.ru/",
 			contentType:  "text/plain",
 			expectedCode: http.StatusCreated,
 		},
 	}
 
-	app := fiber.New()
-	app.Post(`/`, func(c *fiber.Ctx) error {
-		return shortingURLHandler(c, "http://localhost:8080/")
-	})
-	app.Get(`/:id`, redirectingURLHandler)
+	e := echo.New()
+	h := handlers.NewHandlers(storage.NewStorage(), "http://localhost:8080/")
+	e.POST("/", h.ShortingURLHandler)
+	e.GET("/:id", h.RedirectingURLHandler)
 
 	for _, test := range tests {
 		// Create a POST request to shorten the URL.
-		postReq := httptest.NewRequest(http.MethodPost, `/`, bytes.NewBufferString(test.body))
+		postReq := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(test.body))
 		postReq.Header.Set("Content-Type", test.contentType)
-		postResp, _ := app.Test(postReq, 1)
+		postResp := httptest.NewRecorder()
+		e.ServeHTTP(postResp, postReq)
 
 		// Assert that the response status code matches the expected code.
-		assert.Equalf(t, test.expectedCode, postResp.StatusCode, test.description)
+		assert.Equalf(t, test.expectedCode, postResp.Code, test.description)
 
 		// Read the response body to get the short URL.
-		bodyBuffer := new(bytes.Buffer)
-		bodyBuffer.ReadFrom(postResp.Body)
-		shortURL := bodyBuffer.String()
-
-		postError := postResp.Body.Close()
-		if postError != nil {
-			return
-		}
+		shortURL := postResp.Body.String()
 
 		// Parse the short URL to extract the ID.
 		URLParts := strings.Split(shortURL, "/")
 		idURL := URLParts[len(URLParts)-1]
 
 		// Create a GET request to retrieve the original URL.
-		getReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf(`/%s`, idURL), nil)
+		getReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%s", idURL), nil)
 		getReq.Header.Set("Content-Type", test.contentType)
-		getResp, _ := app.Test(getReq, 1)
+		getResp := httptest.NewRecorder()
+		e.ServeHTTP(getResp, getReq)
 
 		// Get the redirect location header from the response.
-		redirectLocation, _ := getResp.Location()
+		redirectLocation := getResp.Header().Get("Location")
 		// Assert that the redirect location matches the original URL.
-		assert.Equalf(t, test.body, redirectLocation.String(), test.description)
-
-		getError := getResp.Body.Close()
-		if getError != nil {
-			return
-		}
+		assert.Equalf(t, test.body, redirectLocation, test.description)
 	}
 }
