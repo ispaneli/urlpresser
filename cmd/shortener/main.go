@@ -19,11 +19,11 @@ func main() {
 	fmt.Printf("HTTP Address: %s\n", cfg.HTTPAddress)
 	fmt.Printf("Base URL: %s\n", cfg.BaseURL)
 
-	HTTPAddress := cfg.HTTPAddress
+	httpAddress := cfg.HTTPAddress
 	baseURL := cfg.BaseURL
 
 	if address := os.Getenv("SERVER_ADDRESS"); address != "" {
-		HTTPAddress = address
+		httpAddress = address
 	}
 	if url := os.Getenv("BASE_URL"); url != "" {
 		baseURL = url
@@ -38,7 +38,7 @@ func main() {
 	e.POST("/", h.ShortingURLHandler)
 	e.GET("/:id", h.RedirectingURLHandler)
 
-	if err := e.Start(HTTPAddress); !errors.Is(err, http.ErrServerClosed) {
+	if err := e.Start(httpAddress); !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }
