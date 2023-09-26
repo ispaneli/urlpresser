@@ -4,14 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/ispaneli/urlpresser/internal/config"
 	"github.com/ispaneli/urlpresser/internal/handlers"
+	"github.com/ispaneli/urlpresser/internal/logger"
 	"github.com/ispaneli/urlpresser/internal/storage"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 func main() {
@@ -34,7 +35,7 @@ func main() {
 	h := handlers.NewHandlers(s, baseURL)
 
 	e := echo.New()
-	e.Use(middleware.Logger())
+	e.Use(middleware.RequestLoggerWithConfig(logger.HandlerLoggerConfig))
 	e.POST("/", h.ShortingURLHandler)
 	e.GET("/:id", h.RedirectingURLHandler)
 
