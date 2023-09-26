@@ -5,8 +5,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/ispaneli/urlpresser/internal/storage"
 	"github.com/labstack/echo/v4"
+
+	"github.com/ispaneli/urlpresser/internal/storage"
 )
 
 type Handlers struct {
