@@ -2,9 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
-	"github.com/ispaneli/urlpresser/internal/handlers"
-	"github.com/ispaneli/urlpresser/internal/storage"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +12,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/ispaneli/urlpresser/internal/handlers"
+	"github.com/ispaneli/urlpresser/internal/storage"
 )
 
 func TestShortingURLRoute(t *testing.T) {
@@ -46,7 +49,8 @@ func TestShortingURLRoute(t *testing.T) {
 	}
 
 	e := echo.New()
-	h := handlers.NewHandlers(storage.NewStorage(), "http://localhost:8080/")
+	s, _ := storage.NewStorage("")
+	h := handlers.NewHandlers(s, "http://localhost:8080/")
 	e.POST("/", h.ShortingURLHandler)
 
 	var originalURLMap = make(map[string]string)
@@ -103,7 +107,8 @@ func TestRedirectingURLRoute(t *testing.T) {
 	}
 
 	e := echo.New()
-	h := handlers.NewHandlers(storage.NewStorage(), "http://localhost:8080/")
+	s, _ := storage.NewStorage("")
+	h := handlers.NewHandlers(s, "http://localhost:8080/")
 	e.POST("/", h.ShortingURLHandler)
 	e.GET("/:id", h.RedirectingURLHandler)
 
@@ -134,5 +139,86 @@ func TestRedirectingURLRoute(t *testing.T) {
 		redirectLocation := getResp.Header().Get("Location")
 		// Assert that the redirect location matches the original URL.
 		assert.Equalf(t, test.body, redirectLocation, test.description)
+	}
+}
+
+func TestShortenAPIHandler(t *testing.T) {
+	tests := []struct {
+		description  string
+		route        string
+		body         string
+		mainURL      string
+		contentType  string
+		expectedCode int
+	}{
+		{
+			description:  "Get HTTP status 201",
+			route:        "/api/shorten",
+			body:         `{"url": "https://practicum.yandex.ru/"}`,
+			mainURL:      "https://practicum.yandex.ru/",
+			contentType:  "application/json",
+			expectedCode: http.StatusCreated,
+		},
+		{
+			description:  "Get HTTP status 201 (existing URL)",
+			route:        "/api/shorten",
+			body:         `{"url": "https://practicum.yandex.ru/"}`,
+			mainURL:      "https://practicum.yandex.ru/",
+			contentType:  "application/json",
+			expectedCode: http.StatusCreated,
+		},
+	}
+
+	e := echo.New()
+	s, _ := storage.NewStorage("")
+	h := handlers.NewHandlers(s, "http://localhost:8080/")
+	e.POST("/api/shorten", h.ShortenAPIHandler)
+	e.GET("/:id", h.RedirectingURLHandler)
+
+	var originalURLMap = make(map[string]string)
+
+	for _, test := range tests {
+		// Create a POST request with the test data.
+		req := httptest.NewRequest(http.MethodPost, "/api/shorten", bytes.NewBufferString(test.body))
+		req.Header.Set("Content-Type", test.contentType)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		// Handle the request.
+		if assert.NoError(t, h.ShortenAPIHandler(c)) {
+			// Assert that the response status code matches the expected code.
+			assert.Equalf(t, test.expectedCode, rec.Code, test.description)
+
+			// Read the response body to get the short URL.
+			var response struct {
+				Result string `json:"result"`
+			}
+			dataRec := rec.Body.String()
+			dataRec = dataRec[1 : len(dataRec)-2]
+			decodedData, err := base64.StdEncoding.DecodeString(dataRec)
+			assert.NoError(t, err, test.description)
+			err = json.Unmarshal(decodedData, &response)
+			assert.NoError(t, err, test.description)
+
+			// Check if the original URL already exists in the map.
+			if existShortURL, ok := originalURLMap[test.body]; ok {
+				// If it exists, assert that the short URL matches the existing one.
+				assert.Equalf(t, existShortURL, response.Result, test.description)
+			} else {
+				// If it doesn't exist, add it to the map.
+				originalURLMap[test.body] = response.Result
+			}
+
+			// Create a GET request to retrieve the original URL using the short URL.
+			getReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%s", response.Result[22:]), nil)
+			getReq.Header.Set("Content-Type", test.contentType)
+			getResp := httptest.NewRecorder()
+			e.ServeHTTP(getResp, getReq)
+
+			// Get the redirect location header from the response.
+			redirectLocation := getResp.Header().Get("Location")
+			// Assert that the redirect location matches the original URL.
+			assert.Equalf(t, test.mainURL, redirectLocation, test.description)
+		}
 	}
 }
