@@ -2,7 +2,6 @@ package storage
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"sync"
@@ -68,7 +67,7 @@ func NewStorage(fileStoragePath string) (*Store, error) {
 
 	if fileStoragePath != "" {
 		if _, err := os.Stat(fileStoragePath); err == nil {
-			data, err := ioutil.ReadFile(fileStoragePath)
+			data, err := os.ReadFile(fileStoragePath)
 			if err != nil {
 				return nil, err
 			}
@@ -108,7 +107,7 @@ func (s *Store) saveStorageToFile() error {
 		return err
 	}
 
-	err = ioutil.WriteFile(s.fileStoragePath, jsonData, 0644)
+	err = os.WriteFile(s.fileStoragePath, jsonData, 0644)
 	if err != nil {
 		return err
 	}
