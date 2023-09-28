@@ -38,6 +38,7 @@ func main() {
 	e.Use(middleware.RequestLoggerWithConfig(logger.HandlerLoggerConfig))
 	e.POST("/", h.ShortingURLHandler)
 	e.GET("/:id", h.RedirectingURLHandler)
+	e.POST("/api/shorten", h.ShortenAPIHandler)
 
 	if err := e.Start(httpAddress); !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
