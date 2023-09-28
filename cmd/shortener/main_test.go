@@ -49,7 +49,8 @@ func TestShortingURLRoute(t *testing.T) {
 	}
 
 	e := echo.New()
-	h := handlers.NewHandlers(storage.NewStorage(), "http://localhost:8080/")
+	s, _ := storage.NewStorage("")
+	h := handlers.NewHandlers(s, "http://localhost:8080/")
 	e.POST("/", h.ShortingURLHandler)
 
 	var originalURLMap = make(map[string]string)
@@ -106,7 +107,8 @@ func TestRedirectingURLRoute(t *testing.T) {
 	}
 
 	e := echo.New()
-	h := handlers.NewHandlers(storage.NewStorage(), "http://localhost:8080/")
+	s, _ := storage.NewStorage("")
+	h := handlers.NewHandlers(s, "http://localhost:8080/")
 	e.POST("/", h.ShortingURLHandler)
 	e.GET("/:id", h.RedirectingURLHandler)
 
@@ -168,7 +170,8 @@ func TestShortenAPIHandler(t *testing.T) {
 	}
 
 	e := echo.New()
-	h := handlers.NewHandlers(storage.NewStorage(), "http://localhost:8080/")
+	s, _ := storage.NewStorage("")
+	h := handlers.NewHandlers(s, "http://localhost:8080/")
 	e.POST("/api/shorten", h.ShortenAPIHandler)
 	e.GET("/:id", h.RedirectingURLHandler)
 

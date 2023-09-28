@@ -15,7 +15,11 @@ import (
 func main() {
 	cfg := config.InitConfig()
 
-	s := storage.NewStorage()
+	s, err := storage.NewStorage(cfg.FileStoragePath)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
 
 	h := handlers.NewHandlers(s, cfg.BaseURL)
 
